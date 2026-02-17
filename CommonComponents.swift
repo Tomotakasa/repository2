@@ -127,4 +127,181 @@ struct ChildTab: View {
             .background(
                 Capsule()
                     .fill(isSelected ? color : Color.white)
-                    .shadow(​​​​​​​​​​​​​​​​
+                    .shadow(
+                        color: isSelected ? color.opacity(0.35) : .black.opacity(0.06),
+                        radius: isSelected ? 8 : 4,
+                        x: 0, y: 2
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Quantity Badge
+struct QuantityBadge: View {
+    let count: Int
+    let color: Color
+    
+    var body: some View {
+        Text("\(count)")
+            .font(.rounded(13, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(color))
+    }
+}
+
+// MARK: - Category Badge
+struct CategoryBadge: View {
+    let emoji: String
+    let name: String
+    var color: Color = DS.accent
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(emoji).font(.system(size: 14))
+            Text(name).font(.rounded(13, weight: .medium))
+        }
+        .foregroundColor(color)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(color.opacity(0.12)))
+    }
+}
+
+// MARK: - Empty State View
+struct EmptyStateView: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    var action: (() -> Void)? = nil
+    var actionTitle: String = "追加する"
+    
+    var body: some View {
+        VStack(spacing: DS.spacingM) {
+            Text(icon)
+                .font(.system(size: 64))
+                .padding(.bottom, DS.spacingS)
+            
+            Text(title)
+                .font(.rounded(20, weight: .bold))
+                .foregroundColor(DS.primaryText)
+            
+            Text(subtitle)
+                .font(.rounded(14))
+                .foregroundColor(DS.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            
+            if let action = action {
+                Button(action: action) {
+                    Label(actionTitle, systemImage: "plus")
+                }
+                .buttonStyle(PillButtonStyle())
+                .padding(.top, DS.spacingS)
+            }
+        }
+        .padding(DS.spacingXL)
+    }
+}
+
+// MARK: - Loading Overlay
+struct LoadingOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+            
+            RoundedRectangle(cornerRadius: DS.radiusL)
+                .fill(.ultraThinMaterial)
+                .frame(width: 100, height: 100)
+                .overlay(
+                    ProgressView()
+                        .scaleEffect(1.4)
+                        .tint(DS.accent)
+                )
+                .cardShadow()
+        }
+    }
+}
+
+// MARK: - Section Header
+struct SectionHeader: View {
+    let title: String
+    var count: Int? = nil
+    var action: (() -> Void)? = nil
+    var actionTitle: String = "すべて見る"
+    
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.rounded(18, weight: .bold))
+                .foregroundColor(DS.primaryText)
+            
+            if let count = count {
+                Text("\(count)")
+                    .font(.rounded(13, weight: .semibold))
+                    .foregroundColor(DS.secondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(DS.background))
+            }
+            
+            Spacer()
+            
+            if let action = action {
+                Button(action: action) {
+                    Text(actionTitle)
+                        .font(.rounded(13, weight: .medium))
+                        .foregroundColor(DS.accent)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Color Picker Grid
+struct ColorPickerGrid: View {
+    @Binding var selectedHex: String
+    let colors: [Color] = Color.kidsPalette
+    
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 10) {
+            ForEach(colors.indices, id: \.self) { index in
+                let color = colors[index]
+                let hex = color.toHex()
+                
+                Circle()
+                    .fill(color)
+                    .frame(width: 40, height: 40)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(
+                                selectedHex == hex ? Color.white : Color.clear,
+                                lineWidth: 3
+                            )
+                    )
+                    .overlay(
+                        Circle()
+                            .strokeBorder(
+                                selectedHex == hex ? DS.accent : Color.clear,
+                                lineWidth: 2
+                            )
+                            .padding(-2)
+                    )
+                    .scaleEffect(selectedHex == hex ? 1.15 : 1.0)
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3)) {
+                            selectedHex = hex
+                        }
+                        HapticFeedback.light()
+                    }
+            }
+        }
+        .padding(DS.spacingM)
+        .background(DS.background)
+        .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
+    }
+}
