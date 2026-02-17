@@ -295,3 +295,336 @@ struct ChildRow: View {
         .buttonStyle(.plain)
     }
 }
+
+struct ChildEditorView: View {
+    enum Mode {
+        case add
+        case edit(Child)
+    }
+    
+    let mode: Mode
+    @EnvironmentObject var firestoreService: FirestoreService
+    @Environment(\.dismiss) var dismiss
+    
+    @State private var name: String = ""
+    @State private var emoji: String = "🌸"
+    @State private var colorHex: String = "#FF8FAB"
+    @State private var isLoading = false
+    
+    var title: String {
+        switch mode {
+        case .add: return "こどもを追加"
+        case .edit: return "プロフィールを編集"
+        }
+    }
+    
+    let emojiOptions = ["🌸", "⭐️", "🌈", "🦋", "🐼", "🦁", "🐰", "🐸", "🍀", "🌙", "🎠", "🚀"]
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: DS.spacingL) {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: colorHex) ?? .pink)
+                            .frame(width: 100, height: 100)
+                        Text(emoji)
+                            .font(.system(size: 48))
+                    }
+                    .padding(.top, DS.spacingM)
+                    
+                    VStack(spacing: DS.spacingM) {
+                        FormSection(title: "名前") {
+                            FormTextField(title: "名前", text: $name, placeholder: "例: はな")
+                        }
+                        
+                        VStack(alignment: .leading, spacing: DS.spacingS) {
+                            Text("アバター")
+                                .font(.rounded(12, weight: .semibold))
+                                .foregroundColor(DS.secondaryText)
+                                .padding(.leading, DS.spacingXS)
+                            
+                            LazyVGrid(
+                                columns: Array(repeating: GridItem(.flexible()), count: 6),
+                                spacing: DS.spacingS
+                            ) {
+                                ForEach(emojiOptions, id: \.self) { e in
+                                    Button {
+                                        emoji = e
+                                        HapticFeedback.light()
+                                    } label: {
+                                        Text(e)
+                                            .font(.system(size: 28))
+                                            .frame(width: 48, height: 48)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: DS.radiusS)
+                                                    .fill(emoji == e ?
+                                                          (Color(hex: colorHex) ?? DS.accent).opacity(0.2) :
+                                                          Color.gray.opacity(0.08))
+                                            )
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: DS.radiusS)
+                                                    .strokeBorder(
+                                                        emoji == e ? (Color(hex: colorHex) ?? DS.accent) : Color.clear,
+                                                        lineWidth: 2
+                                                    )
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(DS.spacingM)
+                            .background(DS.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
+                            .cardShadow()
+                        }
+                        
+                        VStack(alignment: .leading, spacing: DS.spacingS) {
+                            Text("テーマカラー")
+                                .font(.rounded(12, weight: .semibold))
+                                .foregroundColor(DS.secondaryText)
+                                .padding(.leading, DS.spacingXS)
+                            
+                            ColorPickerGrid(selectedHex: $colorHex)
+                        }
+                        
+                        if case .edit(let child) = mode {
+                            Button {
+                                Task {
+                                    try? await firestoreService.deleteChild(child)
+                                    dismiss()
+                                }
+                            } label: {
+                                Label("削除", systemImage: "trash")
+                                    .font(.rounded(15, weight: .medium))
+                                    .foregroundColor(DS.danger)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 50)
+                                    .background(DS.danger.opacity(0.1))
+                                    .clipShape(RoundedRectangle(cornerRadius: DS.radiusM))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, DS.spacingM)
+                }
+            }
+            .background(DS.background.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("キャンセル") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        Task { await save() }
+                    }
+                    .font(.rounded(15, weight: .semibold))
+                    .foregroundColor(name.isEmpty ? DS.secondaryText : DS.accent)
+                    .disabled(name.isEmpty)
+                }
+            }
+            .onAppear {
+                if case .edit(let child) = mode {
+                    name = child.name
+                    emoji = child.emoji
+                    colorHex = child.colorHex
+                }
+            }
+        }
+    }
+    
+    private func save() async {
+        isLoading = true
+        do {
+            switch mode {
+            case .add:
+                let child = Child(name: name, colorHex: colorHex, emoji: emoji, order: 0)
+                try await firestoreService.addChild(child)
+            case .edit(var child):
+                child.name = name
+                child.colorHex = colorHex
+                child.emoji = emoji
+                try await firestoreService.updateChild(child)
+            }
+            HapticFeedback.success()
+            dismiss()
+        } catch {
+            print("Error saving child:", error)
+        }
+        isLoading = false
+    }
+}
+
+struct CategoriesSettingsView: View {
+    @EnvironmentObject var firestoreService: FirestoreService
+    @State private var categories: [ItemCategory] = []
+    @State private var showAddCategory = false
+    @State private var editingCategory: ItemCategory?
+    
+    var body: some View {
+        List {
+            Section {
+                ForEach($categories) { $category in
+                    CategoryRow(category: $category) {
+                        editingCategory = category
+                    }
+                }
+                .onMove { indices, destination in
+                    categories.move(fromOffsets: indices, toOffset: destination)
+                    Task { try? await firestoreService.updateCategoriesOrder(categories) }
+                }
+                .onDelete { indices in
+                    Task {
+                        for index in indices {
+                            try? await firestoreService.deleteCategory(categories[index])
+                        }
+                    }
+                }
+            } header: {
+                Text("カテゴリ一覧")
+            } footer: {
+                Text("≡ をドラッグして並び替えできます。\nホーム画面の表示順に反映されます。")
+            }
+            
+            Section {
+                Button {
+                    showAddCategory = true
+                } label: {
+                    Label("カテゴリを追加", systemImage: "plus.circle.fill")
+                        .font(.rounded(15, weight: .medium))
+                        .foregroundColor(DS.accent)
+                }
+            }
+        }
+        .navigationTitle("カテゴリの管理")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { EditButton() }
+        .onAppear { categories = firestoreService.categories }
+        .onChange(of: firestoreService.categories) { _, new in categories = new }
+        .sheet(isPresented: $showAddCategory) {
+            CategoryEditorView(mode: .add)
+                .environmentObject(firestoreService)
+        }
+        .sheet(item: $editingCategory) { cat in
+            CategoryEditorView(mode: .edit(cat))
+                .environmentObject(firestoreService)
+        }
+    }
+}
+
+struct CategoryRow: View {
+    @Binding var category: ItemCategory
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                Text(category.emoji).font(.system(size: 24))
+                Text(category.name).font(.rounded(16))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundColor(DS.secondaryText.opacity(0.5))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct CategoryEditorView: View {
+    enum Mode {
+        case add
+        case edit(ItemCategory)
+    }
+    
+    let mode: Mode
+    @EnvironmentObject var firestoreService: FirestoreService
+    @Environment(\.dismiss) var dismiss
+    @State private var name = ""
+    @State private var emoji = "📦"
+    
+    let emojiOptions = ["👕","👖","🧥","🩲","🧦","👟","🌙","🧢","🍼","📦","🎒","🧸","🩳","🧣","🥾"]
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("カテゴリ名") {
+                    TextField("例: ロンパース", text: $name)
+                }
+                
+                Section("アイコン") {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible()), count: 5),
+                        spacing: DS.spacingS
+                    ) {
+                        ForEach(emojiOptions, id: \.self) { e in
+                            Button {
+                                emoji = e
+                                HapticFeedback.light()
+                            } label: {
+                                Text(e)
+                                    .font(.system(size: 28))
+                                    .frame(width: 48, height: 48)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: DS.radiusS)
+                                            .fill(emoji == e ? DS.accent.opacity(0.15) : Color.gray.opacity(0.08))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: DS.radiusS)
+                                            .strokeBorder(emoji == e ? DS.accent : Color.clear, lineWidth: 2)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, DS.spacingS)
+                }
+                
+                if case .edit(let cat) = mode {
+                    Section {
+                        Button("削除", role: .destructive) {
+                            Task {
+                                try? await firestoreService.deleteCategory(cat)
+                                dismiss()
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle(mode == .add ? "カテゴリを追加" : "カテゴリを編集")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("キャンセル") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") {
+                        Task {
+                            switch mode {
+                            case .add:
+                                let cat = ItemCategory(name: name, emoji: emoji, order: 0)
+                                try? await firestoreService.addCategory(cat)
+                            case .edit(var cat):
+                                cat.name = name
+                                cat.emoji = emoji
+                                try? await firestoreService.updateCategory(cat)
+                            }
+                            HapticFeedback.success()
+                            dismiss()
+                        }
+                    }
+                    .font(.rounded(15, weight: .semibold))
+                    .foregroundColor(name.isEmpty ? DS.secondaryText : DS.accent)
+                    .disabled(name.isEmpty)
+                }
+            }
+            .onAppear {
+                if case .edit(let cat) = mode {
+                    name = cat.name
+                    emoji = cat.emoji
+                }
+            }
+        }
+    }
+}
