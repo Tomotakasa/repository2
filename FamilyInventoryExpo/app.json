@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "おうち在庫帳",
+    "slug": "family-inventory-expo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFF0F5"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.familyinventory.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FFF0F5"
+      },
+      "package": "com.familyinventory.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "写真ライブラリへのアクセスを許可してください。",
+          "cameraPermission": "カメラへのアクセスを許可してください。"
+        }
+      ]
+    ]
+  }
+}
