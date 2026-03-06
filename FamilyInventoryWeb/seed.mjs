@@ -39,7 +39,7 @@ const auth = getAuth(app);
 const db   = getFirestore(app);
 
 // ── Master data ──────────────────────────────────────────────────────────────
-const GROUP_ID = 'seed-group-001';
+// GROUP_ID is resolved in main() after loading env
 
 const children = [
   { id: 'child_mirei',  name: 'みれい',  color: '#EC4899', emoji: '👧' },
@@ -247,10 +247,10 @@ const rows = [
 async function main() {
   const seedEmail    = env.SEED_EMAIL;
   const seedPassword = env.SEED_PASSWORD;
+  const existingGroupId = env.SEED_GROUP_ID;
   let uid;
 
   if (seedEmail && seedPassword) {
-    // Try sign-in first; if account doesn't exist yet, create it
     try {
       console.log(`Signing in as ${seedEmail}…`);
       const { user } = await signInWithEmailAndPassword(auth, seedEmail, seedPassword);
@@ -270,56 +270,63 @@ async function main() {
 
   const now = Timestamp.now();
 
-  // 1. Create group
-  console.log('Creating group…');
-  await setDoc(doc(db, 'groups', GROUP_ID), {
-    id: GROUP_ID,
-    name: 'こどもワードローブ',
-    ownerId: uid,
-    members: { [uid]: 'owner' },
-    memberNames: { [uid]: 'オーナー' },
-    children,
-    categories,
-    createdAt: now,
-  });
+  let groupId;
 
-  // 2. Create user profile
-  await setDoc(doc(db, 'users', uid), {
-    uid,
-    displayName: 'オーナー',
-    email: seedEmail ?? '',
-    groupIds: [GROUP_ID],
-    createdAt: now,
-  });
+  if (existingGroupId) {
+    // ── 既存グループにアイテムだけ追加 ──────────────────────────────────────
+    groupId = existingGroupId;
+    console.log(`既存グループ ${groupId} にアイテムを追加します…`);
+  } else {
+    // ── 新規グループ・ユーザーを作成 ────────────────────────────────────────
+    groupId = 'seed-group-001';
+    console.log('グループを新規作成…');
+    await setDoc(doc(db, 'groups', groupId), {
+      id: groupId,
+      name: 'こどもワードローブ',
+      ownerId: uid,
+      members: { [uid]: 'owner' },
+      memberNames: { [uid]: 'オーナー' },
+      children,
+      categories,
+      createdAt: now,
+    });
+    await setDoc(doc(db, 'users', uid), {
+      uid,
+      displayName: 'オーナー',
+      email: seedEmail ?? '',
+      groupIds: [groupId],
+      createdAt: now,
+    });
+  }
 
-  // 3. Create items
-  console.log(`Creating ${rows.length} items…`);
-  const itemsCol = collection(db, 'groups', GROUP_ID, 'items');
+  // ── アイテム登録 ──────────────────────────────────────────────────────────
+  console.log(`${rows.length} 件のアイテムを登録中…`);
+  const itemsCol = collection(db, 'groups', groupId, 'items');
   let count = 0;
   for (const [who, catRaw, name, size, qty, status, imageUrl, brand, color, memo] of rows) {
-    const childId   = childMap[who.trim()] ?? 'all';
+    const childId    = childMap[who.trim()] ?? 'all';
     const categoryId = fixCat(catRaw.trim());
-    const notes     = buildNotes(color, memo, status);
+    const notes      = buildNotes(color, memo, status);
     await addDoc(itemsCol, {
-      name:       name.trim(),
+      name:        name.trim(),
       categoryId,
       childId,
-      size:       size.trim(),
-      brand:      brand.trim(),
-      quantity:   qty,
+      size:        size.trim(),
+      brand:       brand.trim(),
+      quantity:    qty,
       notes,
-      imageUrl:   imageUrl.trim() || null,
-      createdAt:  now,
-      updatedAt:  now,
-      createdBy:  uid,
+      imageUrl:    imageUrl.trim() || null,
+      createdAt:   now,
+      updatedAt:   now,
+      createdBy:   uid,
     });
     count++;
     if (count % 20 === 0) console.log(`  ${count}/${rows.length}`);
   }
 
-  console.log(`\n✅ 完了！ Group ID: ${GROUP_ID}`);
-  if (seedEmail) {
-    console.log(`\nアプリにログイン: ${seedEmail} / (設定したパスワード)`);
+  console.log(`\n✅ 完了！ ${count} 件を Group ${groupId} に登録しました`);
+  if (!existingGroupId && seedEmail) {
+    console.log(`アプリにログイン: ${seedEmail}`);
   }
   process.exit(0);
 }
