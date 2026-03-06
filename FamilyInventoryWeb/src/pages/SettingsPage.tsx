@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Edit3, Eye, EyeOff, LogOut, Pencil, Plus, Trash2, UserPlus, X } from 'lucide-react';
+import { Check, ChevronRight, Download, Edit3, Eye, EyeOff, LogOut, Pencil, Plus, Trash2, UserPlus, X } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useGroup } from '../contexts/GroupContext';
 import type { Category, Child } from '../types';
 import { CHILD_EMOJIS, generateId } from '../utils/helpers';
+import { SEED_ITEM_COUNT, importSeedData } from '../utils/seedData';
 
 /* ──────────────────────────────────────────
    Child edit modal
@@ -273,6 +274,30 @@ export const SettingsPage: React.FC = () => {
   const [childModal,  setChildModal]  = useState<null | (Partial<Child>  & { isNew: boolean })>(null);
   const [catModal,    setCatModal]    = useState<null | (Partial<Category> & { isNew: boolean })>(null);
   const [showInvite,  setShowInvite]  = useState(false);
+  const [importing,   setImporting]   = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+
+  const handleImportSeedData = async () => {
+    if (!currentGroup || !user) return;
+    if (!confirm(`スプレッドシートのデータ ${SEED_ITEM_COUNT} 件をインポートしますか？\n既存のアイテムは削除されません。`)) return;
+    setImporting(true);
+    setImportProgress(0);
+    try {
+      await importSeedData(
+        currentGroup.id,
+        currentGroup.categories,
+        currentGroup.children,
+        user.uid,
+        (count, total) => setImportProgress(Math.round((count / total) * 100)),
+      );
+      toast.success(`${SEED_ITEM_COUNT} 件のデータをインポートしました`);
+    } catch {
+      toast.error('インポートに失敗しました');
+    } finally {
+      setImporting(false);
+      setImportProgress(0);
+    }
+  };
 
   const sortedCategories = useMemo(
     () => [...(currentGroup?.categories ?? [])].sort((a, b) => a.order - b.order),
@@ -460,6 +485,37 @@ export const SettingsPage: React.FC = () => {
             </button>
           </div>
         </Section>
+
+        {/* ── Seed data import ── */}
+        {currentGroup && (
+          <Section title="データインポート" emoji="📥">
+            <div className="card p-4 space-y-3">
+              <p className="text-sm text-gray-600">
+                スプレッドシートのデータ（{SEED_ITEM_COUNT} 件）を一括登録します。
+                子供・カテゴリは現在のグループ設定に合わせて自動マッピングされます。
+              </p>
+              {importing && (
+                <div className="space-y-1">
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div
+                      className="bg-primary-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${importProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 text-center">{importProgress}%</p>
+                </div>
+              )}
+              <button
+                onClick={handleImportSeedData}
+                disabled={importing}
+                className="btn-primary w-full flex items-center justify-center gap-2 text-sm"
+              >
+                <Download size={16} />
+                {importing ? `インポート中… ${importProgress}%` : 'データを一括インポート'}
+              </button>
+            </div>
+          </Section>
+        )}
 
         {/* ── Camera AI API key ── */}
         <Section title="カメラAI設定" emoji="🤖">
