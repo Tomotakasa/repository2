@@ -10,7 +10,7 @@ import {
   createUserWithEmailAndPassword, signInWithEmailAndPassword
 } from 'firebase/auth';
 import {
-  getFirestore, doc, setDoc, collection, addDoc, Timestamp
+  getFirestore, doc, setDoc, getDoc, collection, addDoc, Timestamp
 } from 'firebase/firestore';
 import { readFileSync } from 'fs';
 
@@ -272,10 +272,47 @@ async function main() {
 
   let groupId;
 
+  // category/child name → actual Firestore ID mapping
+  // (populated when using existing group)
+  let catNameToId  = {}; // e.g. 'オムツ' → 'mmdjgtuqgn94z6n'
+  let childNameToId = {}; // e.g. 'みれい' → 'abc123'
+
+  // seed data category label → display name used in the existing group
+  const catLabelToName = {
+    cat_01: 'オムツ',
+    cat_02: '保育園用品',
+    cat_03: '靴',
+    cat_04: '靴下',
+    cat_05: 'アウター',
+    cat_06: 'トップス',
+    cat_07: 'ボトムス',
+    cat_08: 'スノーウェア',
+    cat_09: 'パジャマ',
+  };
+
   if (existingGroupId) {
     // ── 既存グループにアイテムだけ追加 ──────────────────────────────────────
     groupId = existingGroupId;
-    console.log(`既存グループ ${groupId} にアイテムを追加します…`);
+    console.log(`既存グループ ${groupId} を読み込んでいます…`);
+
+    const groupSnap = await getDoc(doc(db, 'groups', groupId));
+    if (!groupSnap.exists()) {
+      console.error(`グループ ${groupId} が見つかりません`);
+      process.exit(1);
+    }
+    const groupData = groupSnap.data();
+
+    // カテゴリIDマッピング（名前 → 実ID）
+    for (const cat of (groupData.categories ?? [])) {
+      catNameToId[cat.name] = cat.id;
+    }
+    console.log('カテゴリマッピング:', catNameToId);
+
+    // 子供IDマッピング（名前 → 実ID）
+    for (const child of (groupData.children ?? [])) {
+      childNameToId[child.name] = child.id;
+    }
+    console.log('子供マッピング:', childNameToId);
   } else {
     // ── 新規グループ・ユーザーを作成 ────────────────────────────────────────
     groupId = 'seed-group-001';
@@ -304,9 +341,28 @@ async function main() {
   const itemsCol = collection(db, 'groups', groupId, 'items');
   let count = 0;
   for (const [who, catRaw, name, size, qty, status, imageUrl, brand, color, memo] of rows) {
-    const childId    = childMap[who.trim()] ?? 'all';
-    const categoryId = fixCat(catRaw.trim());
-    const notes      = buildNotes(color, memo, status);
+    const whoTrimmed = who.trim();
+    // child: look up by name in existing group, or use hardcoded fallback
+    let childId;
+    if (whoTrimmed === 'みんな' || whoTrimmed === '' || whoTrimmed === ' ') {
+      childId = 'all';
+    } else if (childNameToId[whoTrimmed]) {
+      childId = childNameToId[whoTrimmed];
+    } else {
+      childId = childMap[whoTrimmed] ?? 'all';
+    }
+
+    // category: look up by name in existing group, or use hardcoded label
+    const catLabel = fixCat(catRaw.trim());
+    let categoryId;
+    if (existingGroupId) {
+      const catName = catLabelToName[catLabel] ?? catLabel;
+      categoryId = catNameToId[catName] ?? catLabel;
+    } else {
+      categoryId = catLabel;
+    }
+
+    const notes = buildNotes(color, memo, status);
     await addDoc(itemsCol, {
       name:        name.trim(),
       categoryId,
